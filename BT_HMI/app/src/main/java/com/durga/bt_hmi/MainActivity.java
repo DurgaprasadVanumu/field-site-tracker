@@ -2,11 +2,14 @@ package com.durga.bt_hmi;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 
+import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.AdapterView;
@@ -36,26 +39,25 @@ public class MainActivity extends AppCompatActivity {
         devicelist = (ListView) findViewById(R.id.listView);
 
         myBluetooth = BluetoothAdapter.getDefaultAdapter();
-        if ( myBluetooth==null ) {
-                Toast.makeText(getApplicationContext(), "Bluetooth device not available", Toast.LENGTH_LONG).show();
-                finish();
-            }
-        else if ( !myBluetooth.isEnabled() ) {
-                Intent turnBTon = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-                startActivityForResult(turnBTon, 1);
-            }
+        if (myBluetooth == null) {
+            Toast.makeText(getApplicationContext(), "Bluetooth device not available", Toast.LENGTH_LONG).show();
+            finish();
+        } else if (!myBluetooth.isEnabled()) {
+            Intent turnBTon = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+            startActivityForResult(turnBTon, 1);
+        }
 
         btnPaired.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                    pairedDevicesList();
-                }
-            });
+                pairedDevicesList();
+            }
+        });
 
     }
 
-        private void pairedDevicesList () {
-            pairedDevices = myBluetooth.getBondedDevices();
+    private void pairedDevicesList() {
+        pairedDevices = myBluetooth.getBondedDevices();
             ArrayList list = new ArrayList();
 //            list.add("SAMPLE "+"\n"+"AA:AA:AA:AA:AA:AA");
 

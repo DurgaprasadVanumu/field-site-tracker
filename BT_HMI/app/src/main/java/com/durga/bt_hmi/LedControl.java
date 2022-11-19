@@ -10,15 +10,21 @@ import android.app.ProgressDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
+import android.content.ContentResolver;
+import android.content.ContentValues;
+import android.content.Context;
+import android.content.ContextWrapper;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.pdf.PdfDocument;
+import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.MediaStore;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
@@ -29,7 +35,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 public class LedControl extends AppCompatActivity {
@@ -52,7 +60,11 @@ public class LedControl extends AppCompatActivity {
     int pagewidth = 792;
     private static final int PERMISSION_REQUEST_CODE = 200;
 
+//    private static final int NO_OF_COMMANDS = 50; // If you want both trip and temp logs
+    private static final int NO_OF_COMMANDS = 25; // If you want only trip and no temp logs
+
     private static String fileGenerationFailedMsg = null;
+    private static String fileGeneratedLocation = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -95,6 +107,13 @@ public class LedControl extends AppCompatActivity {
             public void onClick (View v) {
 //                sendSignal("D");
                 new LedControl.GenerateLogFile().execute();
+//                List<String> logs = Arrays.asList("First line", "Second line");
+//                boolean success = generatePdf(logs);
+//                if(success){
+//                    msg("File generated at loc "+fileGeneratedLocation);
+//                }else{
+//                    msg("Failed to generate the file "+fileGenerationFailedMsg+" to save at "+fileGeneratedLocation);
+//                }
             }
         });
 
@@ -131,7 +150,7 @@ public class LedControl extends AppCompatActivity {
         }
     }
 
-    private void generatePdf(List<String> logs){
+    private boolean generatePdf(List<String> logs, String deviceName){
         PdfDocument pdfDocument = new PdfDocument();
         PdfDocument.PageInfo myPageInfo = new PdfDocument.PageInfo.Builder(pagewidth, pageHeight, 1).create();
         PdfDocument.Page myPage = pdfDocument.startPage(myPageInfo);
@@ -158,17 +177,35 @@ public class LedControl extends AppCompatActivity {
 
         pdfDocument.finishPage(myPage);
 
-        String fileName = new Long(System.currentTimeMillis()).toString().replaceAll(":",".")+".pdf";
-        File file = new File(Environment.getExternalStorageDirectory(), fileName);
         try{
-            pdfDocument.writeTo(new FileOutputStream(file));
+            String fileName = Long.valueOf(System.currentTimeMillis()).toString().replaceAll(":",".")+".pdf";
+            fileName = new StringBuffer(deviceName).append("_").append(fileName).toString();
+//            ContextWrapper cw = new ContextWrapper(getApplicationContext());
+//            File directory = cw.getDir("btHmiLogs", Context.MODE_PRIVATE);
+//            File file = new File(directory, fileName);
+//            pdfDocument.writeTo(new FileOutputStream(file));
+//            fileGeneratedLocation = file.toString();
+            ContentResolver resolver = getContentResolver();
+            ContentValues contentValues = new ContentValues();
+            contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+            contentValues.put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf");
+            contentValues.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS+File.separator+"btHmiLogs");
+
+            Uri fileUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues);
+            FileOutputStream fos = (FileOutputStream) resolver.openOutputStream(Objects.requireNonNull(fileUri));
+            pdfDocument.writeTo(fos);
+            fileGeneratedLocation = fileUri.getPath();
         }catch (IOException e){
             fileGenerationFailedMsg = "Failed to generate file "+e.getMessage();
+            pdfDocument.close();
+            return false;
         }catch (Exception e){
             fileGenerationFailedMsg = "Unknown error while generating file "+e.getMessage();
-        }finally {
             pdfDocument.close();
+            return false;
         }
+        pdfDocument.close();
+        return true;
     }
 
     private void Disconnect () {
@@ -187,6 +224,10 @@ public class LedControl extends AppCompatActivity {
         Toast.makeText(getApplicationContext(), s, Toast.LENGTH_LONG).show();
     }
 
+    private void msg (String s, int delay){
+        Toast.makeText(getApplicationContext(), s, delay).show();
+    }
+
     private class GenerateLogFile extends AsyncTask<Void, Void, Void> {
         private boolean fileGenerationSuccess = true;
 
@@ -198,16 +239,17 @@ public class LedControl extends AppCompatActivity {
         @Override
         protected Void doInBackground (Void... devices) {
             try{
+                fileGenerationSuccess = true;
                 if(btSocket!=null && isBtConnected){
                     List<String> logs = new ArrayList<>();
-                    for(int i=0;i<50;i++){
+                    for(int i=0;i<NO_OF_COMMANDS;i++){
                         btSocket.getOutputStream().write("D".toString().getBytes());
                         byte[] byteArray = new byte[100];
                         InputStream inputStream = btSocket.getInputStream();
                         int len = inputStream.read(byteArray);
                         logs.add(new String(byteArray, 0, len));
                     }
-                    generatePdf(logs);
+                    fileGenerationSuccess = generatePdf(logs, deviceName);
                 }else{
                     fileGenerationSuccess = false;
                     fileGenerationFailedMsg = "No device connected.";
@@ -221,10 +263,10 @@ public class LedControl extends AppCompatActivity {
         @Override
         protected void onPostExecute (Void result) {
             super.onPostExecute(result);
-            if(fileGenerationSuccess){
-                msg("File generation successful.");
-            }else{
-                msg("Failed to generate log file. Error: "+fileGenerationFailedMsg);
+            if (fileGenerationSuccess) {
+                msg("File generation successful. Saved at " + fileGeneratedLocation, 5);
+            } else {
+                msg("Failed to generate log file. Error: " + fileGenerationFailedMsg, 5);
             }
             progress.dismiss();
         }
